@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#FAF7F2">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
+<title>Present &middot; Phast &amp; Phurious</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">PHAST<span class="amp">&amp;</span>PHURIOUS</span>
+  <span class="meta"><span id="participants">0</span> connected &middot; <span id="conn-dot" class="dot"></span><span id="conn">connecting&hellip;</span></span>
+</header>
+<main class="wide">
+
+  <section id="stage" class="stage">
+    <div class="stage-join">
+      <span>join at <b class="join-host"></b></span>
+      <span>code <b class="room-code"></b></span>
+    </div>
+    <h2 id="stage-prompt"></h2>
+    <div id="stage-body"></div>
+    <footer class="stage-foot">
+      <span id="stage-meta"></span>
+      <span class="stage-actions" id="stage-actions">
+        <button id="toggle-open" class="ghost small"></button>
+        <button id="hide" class="ghost small">Hide</button>
+        <button id="fullscreen" class="ghost small" title="Show fullscreen">Fullscreen</button>
+      </span>
+    </footer>
+  </section>
+
+  <section class="card">
+    <h2>Questions</h2>
+    <p class="meta" id="deck-empty">Add your first question below &mdash; it goes on screen the moment you add it.</p>
+    <ol id="deck-list" class="deck"></ol>
+    <form id="add-form">
+      <input id="prompt" placeholder="Question or prompt" maxlength="240" required>
+      <select id="qtype">
+        <option value="text">Open text &mdash; answers appear on screen</option>
+        <option value="choice">Multiple choice &mdash; live bar chart</option>
+      </select>
+      <textarea id="options" rows="3" placeholder="One option per line (2&ndash;8)" hidden></textarea>
+      <button type="submit">Add question</button>
+    </form>
+  </section>
+
+  <p class="hint">Answers are anonymous. Tap an answer twice to remove it from the screen.</p>
+</main>
+<script>
+const params = new URLSearchParams(location.search);
+const code = (params.get("code") || "").toUpperCase();
+const key = params.get("key") || localStorage.getItem("presenterKey:" + code) || "";
+document.querySelectorAll(".room-code").forEach(el => el.textContent = code);
+document.querySelectorAll(".join-host").forEach(el => el.textContent = location.host);
+
+let ws;
+let state = null;
+const seenTiles = {}; // question id -> Set of cloud keys already animated in
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(proto + "://" + location.host + "/ws/" + code + "?key=" + encodeURIComponent(key));
+  ws.addEventListener("open", () => setConn(true));
+  ws.addEventListener("message", (e) => { state = JSON.parse(e.data); render(); });
+  ws.addEventListener("close", () => { setConn(false); setTimeout(connect, 1500); });
+}
+function setConn(live) {
+  document.getElementById("conn").textContent = live ? "live" : "reconnecting…";
+  document.getElementById("conn-dot").classList.toggle("live", live);
+}
+function send(m) { ws.send(JSON.stringify(m)); }
+
+function armTwice(el, restore, action) {
+  el.addEventListener("click", () => {
+    if (el.classList.contains("armed")) { action(); return; }
+    el.classList.add("armed");
+    const prev = el.innerHTML;
+    el.textContent = restore;
+    setTimeout(() => {
+      if (el.isConnected && el.classList.contains("armed")) {
+        el.classList.remove("armed");
+        el.innerHTML = prev;
+      }
+    }, 2500);
+  });
+}
+
+function buildCloud(answers, seen, onRemove) {
+  const groups = new Map();
+  for (const a of answers) {
+    const k = a.text.trim().toLowerCase();
+    if (!k) continue;
+    if (groups.has(k)) groups.get(k).count++;
+    else groups.set(k, { text: a.text.trim(), count: 1 });
+  }
+  const wall = document.createElement("div");
+  wall.className = "cloud";
+  if (!groups.size) return wall;
+  const maxCount = Math.max(...[...groups.values()].map(g => g.count));
+  for (const [k, g] of groups) {
+    const el = document.createElement(onRemove ? "button" : "span");
+    if (onRemove) el.type = "button";
+    el.className = "tile";
+    const t = maxCount > 1 ? Math.sqrt((g.count - 1) / (maxCount - 1)) : 0;
+    el.style.fontSize = (1 + t * 1.4).toFixed(2) + "em";
+    el.textContent = g.text;
+    if (g.count > 1) {
+      const badge = document.createElement("small");
+      badge.textContent = "×" + g.count;
+      el.appendChild(badge);
+    }
+    if (seen && !seen.has(k)) { el.classList.add("pop"); seen.add(k); }
+    if (onRemove) {
+      el.title = "Tap twice to remove";
+      armTwice(el, "Remove? Tap again", () => onRemove(g.text));
+    }
+    wall.appendChild(el);
+  }
+  return wall;
+}
+
+function buildBars(q) {
+  const total = q.votes.reduce((a, b) => a + b, 0);
+  const wrap = document.createElement("div");
+  wrap.className = "bars";
+  q.options.forEach((opt, i) => {
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    const head = document.createElement("div");
+    head.className = "bar-head";
+    const label = document.createElement("span");
+    label.className = "bar-label";
+    label.textContent = opt;
+    const count = document.createElement("span");
+    count.className = "bar-count";
+    const pct = total ? Math.round((q.votes[i] / total) * 100) : 0;
+    count.textContent = total ? q.votes[i] + " · " + pct + "%" : "0";
+    head.append(label, count);
+    const track = document.createElement("div");
+    track.className = "track";
+    const fill = document.createElement("div");
+    fill.className = "fill";
+    fill.style.width = pct + "%";
+    track.appendChild(fill);
+    row.append(head, track);
+    wrap.appendChild(row);
+  });
+  return wrap;
+}
+
+function renderStage(q) {
+  const stagePrompt = document.getElementById("stage-prompt");
+  const body = document.getElementById("stage-body");
+  const meta = document.getElementById("stage-meta");
+  const toggle = document.getElementById("toggle-open");
+  const hide = document.getElementById("hide");
+  body.innerHTML = "";
+  if (!q) {
+    stagePrompt.textContent = "Join at " + location.host;
+    const codeEl = document.createElement("div");
+    codeEl.className = "big-code";
+    codeEl.textContent = code;
+    body.appendChild(codeEl);
+    meta.textContent = "waiting for the first question";
+    toggle.hidden = true;
+    hide.hidden = true;
+    return;
+  }
+  toggle.hidden = false;
+  hide.hidden = false;
+  stagePrompt.textContent = q.prompt;
+  if (q.type === "choice") {
+    body.appendChild(buildBars(q));
+    const total = q.votes.reduce((a, b) => a + b, 0);
+    meta.textContent = total + (total === 1 ? " vote" : " votes") + (q.open ? " · live" : " · closed");
+  } else {
+    if (!seenTiles[q.id]) seenTiles[q.id] = new Set();
+    if (q.answers.length) {
+      body.appendChild(buildCloud(q.answers, seenTiles[q.id], (text) => send({ type: "remove_text", qid: q.id, text })));
+    } else {
+      const waitEl = document.createElement("p");
+      waitEl.className = "meta";
+      waitEl.style.margin = "auto";
+      waitEl.textContent = q.open ? "Answers will appear here as people type…" : "No answers.";
+      body.appendChild(waitEl);
+    }
+    const n = q.answers.length;
+    meta.textContent = n + (n === 1 ? " answer" : " answers") + (q.open ? " · live" : " · closed");
+  }
+  toggle.textContent = q.open ? "Close responses" : "Reopen";
+  toggle.onclick = () => send({ type: q.open ? "close" : "reopen", id: q.id });
+}
+
+function renderDeck(deck) {
+  const list = document.getElementById("deck-list");
+  list.innerHTML = "";
+  deck.questions.forEach((q) => {
+    const li = document.createElement("li");
+    const info = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "deck-title";
+    title.textContent = q.prompt;
+    const meta = document.createElement("div");
+    meta.className = "deck-meta";
+    const n = q.type === "choice"
+      ? q.votes.reduce((a, b) => a + b, 0) + " votes"
+      : q.answers.length + " answers";
+    meta.textContent = (q.type === "choice" ? "multiple choice" : "open text") + " · " + n + (q.open ? "" : " · closed");
+    info.append(title, meta);
+    const actions = document.createElement("div");
+    actions.className = "deck-actions";
+    if (deck.activeId === q.id) {
+      const pill = document.createElement("span");
+      pill.className = "pill";
+      pill.textContent = "On screen";
+      actions.appendChild(pill);
+    } else {
+      const show = document.createElement("button");
+      show.className = "small";
+      show.textContent = "Show";
+      show.addEventListener("click", () => send({ type: "activate", id: q.id }));
+      actions.appendChild(show);
+    }
+    const del = document.createElement("button");
+    del.className = "small ghost";
+    del.textContent = "✕";
+    del.title = "Delete question";
+    armTwice(del, "Sure?", () => send({ type: "remove_question", id: q.id }));
+    actions.appendChild(del);
+    li.append(info, actions);
+    list.appendChild(li);
+  });
+  document.getElementById("deck-empty").hidden = deck.questions.length > 0;
+}
+
+function render() {
+  document.getElementById("participants").textContent = state.participants;
+  renderStage(state.deck.questions.find((q) => q.id === state.deck.activeId) ?? null);
+  renderDeck(state.deck);
+}
+
+document.getElementById("qtype").addEventListener("change", (e) => {
+  document.getElementById("options").hidden = e.target.value !== "choice";
+});
+document.getElementById("add-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const prompt = document.getElementById("prompt").value;
+  const qtype = document.getElementById("qtype").value;
+  const options = document.getElementById("options").value.split("\n").map(s => s.trim()).filter(Boolean);
+  if (qtype === "choice" && options.length < 2) { alert("Add at least 2 options, one per line."); return; }
+  send({ type: "add_question", qtype, prompt, options });
+  e.target.reset();
+  document.getElementById("options").hidden = true;
+});
+document.getElementById("hide").addEventListener("click", () => send({ type: "clear_active" }));
+document.getElementById("fullscreen").addEventListener("click", () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.getElementById("stage").requestFullscreen().catch(() => {});
+});
+document.addEventListener("fullscreenchange", () => {
+  document.getElementById("fullscreen").textContent = document.fullscreenElement ? "Exit fullscreen" : "Fullscreen";
+});
+
+connect();
+</script>
+</body>
+</html>

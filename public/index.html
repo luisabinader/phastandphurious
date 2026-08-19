@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#FAF7F2">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
+<title>Phast &amp; Phurious</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <div class="hero">
+    <span class="brand">PHAST<span class="amp">&amp;</span>PHURIOUS</span>
+    <p class="tagline">Ask the room. Watch answers appear live.</p>
+  </div>
+  <div class="card">
+    <form id="join-form">
+      <input id="code" class="code-input" placeholder="CODE" maxlength="8"
+             autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+      <button type="submit" class="block">Join</button>
+    </form>
+    <p id="join-error" class="error" hidden></p>
+    <div class="or"><span>or</span></div>
+    <button id="create" class="ghost block">Create a presentation</button>
+  </div>
+  <p class="hint">Answers are anonymous &middot; rooms expire after 24 hours</p>
+</main>
+<script>
+document.getElementById("join-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const code = document.getElementById("code").value.trim().toUpperCase();
+  const err = document.getElementById("join-error");
+  err.hidden = true;
+  const res = await fetch("/api/rooms/" + encodeURIComponent(code));
+  if (res.ok) {
+    location.href = "/vote.html?code=" + code;
+  } else {
+    err.textContent = "No room with that code — double-check it with your presenter.";
+    err.hidden = false;
+  }
+});
+document.getElementById("create").addEventListener("click", async () => {
+  const res = await fetch("/api/rooms", { method: "POST" });
+  if (!res.ok) { alert("Could not create a room, try again."); return; }
+  const { code, presenterKey } = await res.json();
+  localStorage.setItem("presenterKey:" + code, presenterKey);
+  location.href = "/present.html?code=" + code;
+});
+</script>
+</body>
+</html>
