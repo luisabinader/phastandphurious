@@ -10,43 +10,186 @@
 </head>
 <body>
 <main>
-  <div class="hero">
+  <header class="votebar">
     <span class="brand">PHAST<span class="amp">&amp;</span>PHURIOUS</span>
-    <p class="tagline">Ask the room. Watch answers appear live.</p>
-  </div>
-  <div class="card">
-    <form id="join-form">
-      <input id="code" class="code-input" placeholder="CODE" maxlength="8"
-             autocomplete="off" autocapitalize="characters" spellcheck="false" required>
-      <button type="submit" class="block">Join</button>
-    </form>
-    <p id="join-error" class="error" hidden></p>
-    <div class="or"><span>or</span></div>
-    <button id="create" class="ghost block">Create a presentation</button>
-  </div>
-  <p class="hint">Answers are anonymous &middot; rooms expire after 24 hours</p>
+    <span class="meta"><span id="conn-dot" class="dot"></span><span id="conn">connecting&hellip;</span></span>
+  </header>
+
+  <section id="waiting" class="card center">
+    <h2>You&rsquo;re in!</h2>
+    <p class="meta">The session will begin shortly &mdash; keep this page open.</p>
+  </section>
+
+  <section id="question" class="card" hidden>
+    <h2 id="prompt"></h2>
+
+    <div id="choice-ui" hidden>
+      <div id="choices" class="choices"></div>
+    </div>
+
+    <div id="text-ui" hidden>
+      <form id="answer-form">
+        <input id="answer" placeholder="Type your answer&hellip;" maxlength="240" autocomplete="off">
+        <button type="submit">Share</button>
+      </form>
+      <p class="meta" id="quota" style="margin:.6rem 0 1rem"></p>
+    </div>
+
+    <div id="results"></div>
+    <p class="meta" id="status" style="margin-bottom:0"></p>
+  </section>
+
+  <p class="hint">Answers are anonymous.</p>
 </main>
 <script>
-document.getElementById("join-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const code = document.getElementById("code").value.trim().toUpperCase();
-  const err = document.getElementById("join-error");
-  err.hidden = true;
-  const res = await fetch("/api/rooms/" + encodeURIComponent(code));
-  if (res.ok) {
-    location.href = "/vote.html?code=" + code;
-  } else {
-    err.textContent = "No room with that code — double-check it with your presenter.";
-    err.hidden = false;
+const MAX_PER_PERSON = 3;
+let ws;
+let state = null;
+const myVotes = {};
+const mySubmits = {};
+const seenTiles = {};
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(proto + "://" + location.host + "/ws");
+  ws.addEventListener("open", () => setConn(true));
+  ws.addEventListener("message", (e) => { state = JSON.parse(e.data); render(); });
+  ws.addEventListener("close", () => { setConn(false); setTimeout(connect, 1500); });
+}
+function setConn(live) {
+  document.getElementById("conn").textContent = live ? "live" : "reconnecting…";
+  document.getElementById("conn-dot").classList.toggle("live", live);
+}
+function send(m) { ws.send(JSON.stringify(m)); }
+
+function buildCloud(answers, seen) {
+  const groups = new Map();
+  for (const a of answers) {
+    const k = a.text.trim().toLowerCase();
+    if (!k) continue;
+    if (groups.has(k)) groups.get(k).count++;
+    else groups.set(k, { text: a.text.trim(), count: 1 });
   }
+  const wall = document.createElement("div");
+  wall.className = "cloud";
+  if (!groups.size) return wall;
+  const maxCount = Math.max(...[...groups.values()].map(g => g.count));
+  for (const [k, g] of groups) {
+    const el = document.createElement("span");
+    el.className = "tile";
+    const t = maxCount > 1 ? Math.sqrt((g.count - 1) / (maxCount - 1)) : 0;
+    el.style.fontSize = (1 + t * 1.0).toFixed(2) + "em";
+    el.textContent = g.text;
+    if (g.count > 1) {
+      const badge = document.createElement("small");
+      badge.textContent = "×" + g.count;
+      el.appendChild(badge);
+    }
+    if (seen && !seen.has(k)) { el.classList.add("pop"); seen.add(k); }
+    wall.appendChild(el);
+  }
+  return wall;
+}
+
+function buildBars(q) {
+  const total = q.votes.reduce((a, b) => a + b, 0);
+  const wrap = document.createElement("div");
+  wrap.className = "bars";
+  q.options.forEach((opt, i) => {
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    const head = document.createElement("div");
+    head.className = "bar-head";
+    const label = document.createElement("span");
+    label.className = "bar-label";
+    label.textContent = opt;
+    const count = document.createElement("span");
+    count.className = "bar-count";
+    const pct = total ? Math.round((q.votes[i] / total) * 100) : 0;
+    count.textContent = total ? q.votes[i] + " · " + pct + "%" : "0";
+    head.append(label, count);
+    const track = document.createElement("div");
+    track.className = "track";
+    const fill = document.createElement("div");
+    fill.className = "fill";
+    fill.style.width = pct + "%";
+    track.appendChild(fill);
+    row.append(head, track);
+    wrap.appendChild(row);
+  });
+  return wrap;
+}
+
+function render() {
+  const q = state.active;
+  const waiting = document.getElementById("waiting");
+  const section = document.getElementById("question");
+  if (!q) { section.hidden = true; waiting.hidden = false; return; }
+  waiting.hidden = true;
+  section.hidden = false;
+  document.getElementById("prompt").textContent = q.prompt;
+
+  const choiceUi = document.getElementById("choice-ui");
+  const textUi = document.getElementById("text-ui");
+  const results = document.getElementById("results");
+  const status = document.getElementById("status");
+  results.innerHTML = "";
+
+  if (q.type === "choice") {
+    textUi.hidden = true;
+    choiceUi.hidden = false;
+    const choices = document.getElementById("choices");
+    choices.innerHTML = "";
+    q.options.forEach((opt, i) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = opt;
+      btn.disabled = !q.open;
+      if (myVotes[q.id] === i) btn.classList.add("selected");
+      btn.addEventListener("click", () => {
+        myVotes[q.id] = i;
+        send({ type: "vote", qid: q.id, option: i });
+        render();
+      });
+      choices.appendChild(btn);
+    });
+    results.appendChild(buildBars(q));
+    status.textContent = q.open ? "" : "Voting is closed.";
+  } else {
+    choiceUi.hidden = true;
+    textUi.hidden = false;
+    const used = mySubmits[q.id] ?? 0;
+    const input = document.getElementById("answer");
+    const btn = document.querySelector("#answer-form button");
+    const canSubmit = q.open && used < MAX_PER_PERSON;
+    input.disabled = !canSubmit;
+    btn.disabled = !canSubmit;
+    document.getElementById("quota").textContent =
+      !q.open ? "Responses are closed."
+      : used >= MAX_PER_PERSON ? "You’ve shared " + MAX_PER_PERSON + " answers — thank you!"
+      : used > 0 ? "Shared " + used + " of " + MAX_PER_PERSON + " — you can add another."
+      : "";
+    if (!seenTiles[q.id]) seenTiles[q.id] = new Set();
+    results.appendChild(buildCloud(q.answers, seenTiles[q.id]));
+    const n = q.answers.length;
+    status.textContent = n ? n + (n === 1 ? " answer so far" : " answers so far") : "Be the first to answer!";
+  }
+}
+
+document.getElementById("answer-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const q = state && state.active;
+  if (!q || q.type !== "text") return;
+  const input = document.getElementById("answer");
+  const text = input.value.trim();
+  if (!text) return;
+  send({ type: "submit_text", qid: q.id, text });
+  mySubmits[q.id] = (mySubmits[q.id] ?? 0) + 1;
+  input.value = "";
+  render();
 });
-document.getElementById("create").addEventListener("click", async () => {
-  const res = await fetch("/api/rooms", { method: "POST" });
-  if (!res.ok) { alert("Could not create a room, try again."); return; }
-  const { code, presenterKey } = await res.json();
-  localStorage.setItem("presenterKey:" + code, presenterKey);
-  location.href = "/present.html?code=" + code;
-});
+
+connect();
 </script>
 </body>
 </html>

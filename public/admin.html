@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#FAF7F2">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
-<title>Present &middot; Phast &amp; Phurious</title>
+<title>Admin &middot; Phast &amp; Phurious</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -15,10 +15,14 @@
 </header>
 <main class="wide">
 
+  <div id="auth-warn" class="card" hidden>
+    <p class="error" style="margin:0">This device isn&rsquo;t authorized to run the session &mdash; open the admin link that includes your key (<code>/admin?key=&hellip;</code>).</p>
+  </div>
+
   <section id="stage" class="stage">
     <div class="stage-join">
-      <span>join at <b class="join-host"></b></span>
-      <span>code <b class="room-code"></b></span>
+      <span>audience: <b class="join-host"></b></span>
+      <span>projector: <b><span class="join-host"></span>/screen</b></span>
     </div>
     <h2 id="stage-prompt"></h2>
     <div id="stage-body"></div>
@@ -27,7 +31,6 @@
       <span class="stage-actions" id="stage-actions">
         <button id="toggle-open" class="ghost small"></button>
         <button id="hide" class="ghost small">Hide</button>
-        <button id="fullscreen" class="ghost small" title="Show fullscreen">Fullscreen</button>
       </span>
     </footer>
   </section>
@@ -51,18 +54,17 @@
 </main>
 <script>
 const params = new URLSearchParams(location.search);
-const code = (params.get("code") || "").toUpperCase();
-const key = params.get("key") || localStorage.getItem("presenterKey:" + code) || "";
-document.querySelectorAll(".room-code").forEach(el => el.textContent = code);
+let key = params.get("key") || localStorage.getItem("adminKey") || "";
+if (params.get("key")) localStorage.setItem("adminKey", params.get("key"));
 document.querySelectorAll(".join-host").forEach(el => el.textContent = location.host);
 
 let ws;
 let state = null;
-const seenTiles = {}; // question id -> Set of cloud keys already animated in
+const seenTiles = {};
 
 function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(proto + "://" + location.host + "/ws/" + code + "?key=" + encodeURIComponent(key));
+  ws = new WebSocket(proto + "://" + location.host + "/ws?key=" + encodeURIComponent(key));
   ws.addEventListener("open", () => setConn(true));
   ws.addEventListener("message", (e) => { state = JSON.parse(e.data); render(); });
   ws.addEventListener("close", () => { setConn(false); setTimeout(connect, 1500); });
@@ -159,12 +161,13 @@ function renderStage(q) {
   const hide = document.getElementById("hide");
   body.innerHTML = "";
   if (!q) {
-    stagePrompt.textContent = "Join at " + location.host;
-    const codeEl = document.createElement("div");
-    codeEl.className = "big-code";
-    codeEl.textContent = code;
-    body.appendChild(codeEl);
-    meta.textContent = "waiting for the first question";
+    stagePrompt.textContent = "Nothing on screen";
+    const sub = document.createElement("p");
+    sub.className = "meta";
+    sub.style.margin = "auto";
+    sub.textContent = "The screen shows “Starting soon…” until you put a question up.";
+    body.appendChild(sub);
+    meta.textContent = "";
     toggle.hidden = true;
     hide.hidden = true;
     return;
@@ -238,6 +241,9 @@ function renderDeck(deck) {
 
 function render() {
   document.getElementById("participants").textContent = state.participants;
+  const authorized = state.role === "presenter";
+  document.getElementById("auth-warn").hidden = authorized;
+  if (!authorized) return;
   renderStage(state.deck.questions.find((q) => q.id === state.deck.activeId) ?? null);
   renderDeck(state.deck);
 }
@@ -256,13 +262,6 @@ document.getElementById("add-form").addEventListener("submit", (e) => {
   document.getElementById("options").hidden = true;
 });
 document.getElementById("hide").addEventListener("click", () => send({ type: "clear_active" }));
-document.getElementById("fullscreen").addEventListener("click", () => {
-  if (document.fullscreenElement) document.exitFullscreen();
-  else document.getElementById("stage").requestFullscreen().catch(() => {});
-});
-document.addEventListener("fullscreenchange", () => {
-  document.getElementById("fullscreen").textContent = document.fullscreenElement ? "Exit fullscreen" : "Fullscreen";
-});
 
 connect();
 </script>

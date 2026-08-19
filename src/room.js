@@ -1,6 +1,6 @@
-// One Durable Object instance per room code.
-// Holds a deck of questions (multiple-choice or open text), broadcasts state
-// to every connected WebSocket. Uses the hibernation API so idle rooms cost nothing.
+// The single session room. Holds a deck of questions (multiple-choice or
+// open text) and broadcasts state to every connected WebSocket.
+// Uses the hibernation API so the idle room costs nothing.
 
 const MAX_QUESTIONS = 50;
 const MAX_OPTIONS = 8;
@@ -14,35 +14,10 @@ export class Room {
   }
 
   async fetch(request) {
-    const url = new URL(request.url);
-
-    if (url.pathname === "/init" && request.method === "POST") {
-      if (await this.ctx.storage.get("createdAt")) {
-        return new Response("room already exists", { status: 409 });
-      }
-      const presenterKey = crypto.randomUUID();
-      await this.ctx.storage.put({
-        createdAt: Date.now(),
-        presenterKey,
-        deck: { activeId: null, questions: [] },
-      });
-      // Rooms self-destruct after 24h so old codes free up.
-      await this.ctx.storage.setAlarm(Date.now() + 24 * 60 * 60 * 1000);
-      return Response.json({ presenterKey });
-    }
-
-    if (url.pathname === "/exists") {
-      const exists = Boolean(await this.ctx.storage.get("createdAt"));
-      return Response.json({ exists }, { status: exists ? 200 : 404 });
-    }
-
     if (request.headers.get("Upgrade") === "websocket") {
-      if (!(await this.ctx.storage.get("createdAt"))) {
-        return new Response("room not found", { status: 404 });
-      }
+      const url = new URL(request.url);
       const key = url.searchParams.get("key");
-      const presenterKey = await this.ctx.storage.get("presenterKey");
-      const role = key && key === presenterKey ? "presenter" : "audience";
+      const role = key && this.env.ADMIN_KEY && key === this.env.ADMIN_KEY ? "presenter" : "audience";
       const pair = new WebSocketPair();
       this.ctx.acceptWebSocket(pair[1], [role]);
       const deck = await this.getDeck();
@@ -50,7 +25,6 @@ export class Room {
       await this.broadcast(deck, pair[1]);
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
-
     return new Response("not found", { status: 404 });
   }
 
@@ -193,10 +167,9 @@ export class Room {
     await this.broadcast(await this.getDeck());
   }
 
+  // Old multi-room instances from earlier versions may still have pending
+  // self-destruct alarms; let them clean themselves up.
   async alarm() {
-    for (const ws of this.ctx.getWebSockets()) {
-      try { ws.close(1000, "room expired"); } catch {}
-    }
     await this.ctx.storage.deleteAll();
   }
 }

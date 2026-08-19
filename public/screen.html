@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#241F33">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
+<title>Screen &middot; Phast &amp; Phurious</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="screen">
+<main id="stage" class="stage fullpage">
+  <div class="stage-join">
+    <span class="brand">PHAST<span class="amp">&amp;</span>PHURIOUS</span>
+    <span>join at <b class="join-host"></b></span>
+  </div>
+  <h1 id="stage-prompt"></h1>
+  <div id="stage-body"></div>
+  <footer class="stage-foot">
+    <span id="stage-meta"></span>
+    <button id="fullscreen" class="ghost small">Fullscreen</button>
+  </footer>
+</main>
+<script>
+document.querySelectorAll(".join-host").forEach(el => el.textContent = location.host);
+
+let ws;
+let state = null;
+const seenTiles = {};
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(proto + "://" + location.host + "/ws");
+  ws.addEventListener("message", (e) => { state = JSON.parse(e.data); render(); });
+  ws.addEventListener("close", () => setTimeout(connect, 1500));
+}
+
+function buildCloud(answers, seen) {
+  const groups = new Map();
+  for (const a of answers) {
+    const k = a.text.trim().toLowerCase();
+    if (!k) continue;
+    if (groups.has(k)) groups.get(k).count++;
+    else groups.set(k, { text: a.text.trim(), count: 1 });
+  }
+  const wall = document.createElement("div");
+  wall.className = "cloud";
+  if (!groups.size) return wall;
+  const maxCount = Math.max(...[...groups.values()].map(g => g.count));
+  for (const [k, g] of groups) {
+    const el = document.createElement("span");
+    el.className = "tile";
+    const t = maxCount > 1 ? Math.sqrt((g.count - 1) / (maxCount - 1)) : 0;
+    el.style.fontSize = (1 + t * 1.4).toFixed(2) + "em";
+    el.textContent = g.text;
+    if (g.count > 1) {
+      const badge = document.createElement("small");
+      badge.textContent = "×" + g.count;
+      el.appendChild(badge);
+    }
+    if (seen && !seen.has(k)) { el.classList.add("pop"); seen.add(k); }
+    wall.appendChild(el);
+  }
+  return wall;
+}
+
+function buildBars(q) {
+  const total = q.votes.reduce((a, b) => a + b, 0);
+  const wrap = document.createElement("div");
+  wrap.className = "bars";
+  q.options.forEach((opt, i) => {
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    const head = document.createElement("div");
+    head.className = "bar-head";
+    const label = document.createElement("span");
+    label.className = "bar-label";
+    label.textContent = opt;
+    const count = document.createElement("span");
+    count.className = "bar-count";
+    const pct = total ? Math.round((q.votes[i] / total) * 100) : 0;
+    count.textContent = total ? q.votes[i] + " · " + pct + "%" : "0";
+    head.append(label, count);
+    const track = document.createElement("div");
+    track.className = "track";
+    const fill = document.createElement("div");
+    fill.className = "fill";
+    fill.style.width = pct + "%";
+    track.appendChild(fill);
+    row.append(head, track);
+    wrap.appendChild(row);
+  });
+  return wrap;
+}
+
+function render() {
+  const q = state.active;
+  const stagePrompt = document.getElementById("stage-prompt");
+  const body = document.getElementById("stage-body");
+  const meta = document.getElementById("stage-meta");
+  body.innerHTML = "";
+  if (!q) {
+    stagePrompt.textContent = "Join at " + location.host;
+    const sub = document.createElement("p");
+    sub.className = "meta";
+    sub.style.margin = "auto";
+    sub.style.fontSize = "1.2em";
+    sub.textContent = "Starting soon…";
+    body.appendChild(sub);
+    meta.textContent = state.participants + " connected";
+    return;
+  }
+  stagePrompt.textContent = q.prompt;
+  if (q.type === "choice") {
+    body.appendChild(buildBars(q));
+    const total = q.votes.reduce((a, b) => a + b, 0);
+    meta.textContent = total + (total === 1 ? " vote" : " votes") + " · " + state.participants + " connected";
+  } else {
+    if (!seenTiles[q.id]) seenTiles[q.id] = new Set();
+    if (q.answers.length) {
+      body.appendChild(buildCloud(q.answers, seenTiles[q.id]));
+    } else {
+      const waitEl = document.createElement("p");
+      waitEl.className = "meta";
+      waitEl.style.margin = "auto";
+      waitEl.textContent = "Answers will appear here as people type…";
+      body.appendChild(waitEl);
+    }
+    meta.textContent = q.answers.length + (q.answers.length === 1 ? " answer" : " answers") + " · " + state.participants + " connected";
+  }
+}
+
+document.getElementById("fullscreen").addEventListener("click", () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(() => {});
+});
+document.addEventListener("fullscreenchange", () => {
+  document.getElementById("fullscreen").textContent = document.fullscreenElement ? "Exit fullscreen" : "Fullscreen";
+});
+
+connect();
+</script>
+</body>
+</html>

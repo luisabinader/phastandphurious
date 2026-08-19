@@ -10,6 +10,7 @@
     "bindings": [{ "name": "ROOM", "class_name": "Room" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "vars": { "ADMIN_KEY": "1c85421572da12ecf817" },
   "routes": [
     { "pattern": "phastandphurious.org", "custom_domain": true },
     { "pattern": "www.phastandphurious.org", "custom_domain": true }
