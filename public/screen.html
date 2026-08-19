@@ -14,8 +14,7 @@
     <span class="brand">PHAST<span class="amp">&amp;</span>PHURIOUS</span>
     <span>join at <b class="join-host"></b></span>
   </div>
-  <h1 id="stage-prompt"></h1>
-  <div id="stage-body"></div>
+  <div id="qs" class="screen-qs"></div>
   <footer class="stage-foot">
     <span id="stage-meta"></span>
     <button id="fullscreen" class="ghost small">Fullscreen</button>
@@ -51,7 +50,7 @@ function buildCloud(answers, seen) {
     const el = document.createElement("span");
     el.className = "tile";
     const t = maxCount > 1 ? Math.sqrt((g.count - 1) / (maxCount - 1)) : 0;
-    el.style.fontSize = (1 + t * 1.4).toFixed(2) + "em";
+    el.style.fontSize = (1 + t * 1.2).toFixed(2) + "em";
     el.textContent = g.text;
     if (g.count > 1) {
       const badge = document.createElement("small");
@@ -94,40 +93,43 @@ function buildBars(q) {
 }
 
 function render() {
-  const q = state.active;
-  const stagePrompt = document.getElementById("stage-prompt");
-  const body = document.getElementById("stage-body");
+  const qs = state.questions;
+  const container = document.getElementById("qs");
   const meta = document.getElementById("stage-meta");
-  body.innerHTML = "";
-  if (!q) {
-    stagePrompt.textContent = "Join at " + location.host;
-    const sub = document.createElement("p");
-    sub.className = "meta";
-    sub.style.margin = "auto";
-    sub.style.fontSize = "1.2em";
-    sub.textContent = "Starting soon…";
-    body.appendChild(sub);
+  container.innerHTML = "";
+  if (!qs.length) {
+    const idle = document.createElement("div");
+    idle.className = "screen-idle";
+    idle.textContent = "Starting soon…";
+    container.appendChild(idle);
     meta.textContent = state.participants + " connected";
     return;
   }
-  stagePrompt.textContent = q.prompt;
-  if (q.type === "choice") {
-    body.appendChild(buildBars(q));
-    const total = q.votes.reduce((a, b) => a + b, 0);
-    meta.textContent = total + (total === 1 ? " vote" : " votes") + " · " + state.participants + " connected";
-  } else {
-    if (!seenTiles[q.id]) seenTiles[q.id] = new Set();
-    if (q.answers.length) {
-      body.appendChild(buildCloud(q.answers, seenTiles[q.id]));
+  let totalAnswers = 0;
+  qs.forEach((q) => {
+    const sec = document.createElement("section");
+    sec.className = "screen-q";
+    const h = document.createElement("h2");
+    h.textContent = q.prompt;
+    sec.appendChild(h);
+    if (q.type === "choice") {
+      sec.appendChild(buildBars(q));
+      totalAnswers += q.votes.reduce((a, b) => a + b, 0);
     } else {
-      const waitEl = document.createElement("p");
-      waitEl.className = "meta";
-      waitEl.style.margin = "auto";
-      waitEl.textContent = "Answers will appear here as people type…";
-      body.appendChild(waitEl);
+      if (!seenTiles[q.id]) seenTiles[q.id] = new Set();
+      if (q.answers.length) {
+        sec.appendChild(buildCloud(q.answers, seenTiles[q.id]));
+      } else {
+        const p = document.createElement("p");
+        p.className = "screen-empty";
+        p.textContent = "…";
+        sec.appendChild(p);
+      }
+      totalAnswers += q.answers.length;
     }
-    meta.textContent = q.answers.length + (q.answers.length === 1 ? " answer" : " answers") + " · " + state.participants + " connected";
-  }
+    container.appendChild(sec);
+  });
+  meta.textContent = totalAnswers + (totalAnswers === 1 ? " answer" : " answers") + " · " + state.participants + " connected";
 }
 
 document.getElementById("fullscreen").addEventListener("click", () => {

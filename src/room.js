@@ -29,17 +29,12 @@ export class Room {
   }
 
   async getDeck() {
-    return (await this.ctx.storage.get("deck")) ?? { activeId: null, questions: [] };
+    return (await this.ctx.storage.get("deck")) ?? { questions: [] };
   }
 
   snapshotFor(role, deck) {
     const participants = this.ctx.getWebSockets().length;
-    if (role === "presenter") {
-      return { type: "state", role, participants, deck };
-    }
-    // The audience only sees the currently shown question, not the whole deck.
-    const active = deck.questions.find((q) => q.id === deck.activeId) ?? null;
-    return { type: "state", role, participants, active };
+    return { type: "state", role, participants, questions: deck.questions };
   }
 
   async broadcast(deck, skip = null) {
@@ -83,16 +78,6 @@ export class Room {
           q.answers = [];
         }
         deck.questions.push(q);
-        if (!deck.activeId) deck.activeId = q.id;
-        return this.save(deck);
-      }
-      if (msg.type === "activate") {
-        if (!find(msg.id)) return;
-        deck.activeId = msg.id;
-        return this.save(deck);
-      }
-      if (msg.type === "clear_active") {
-        deck.activeId = null;
         return this.save(deck);
       }
       if (msg.type === "close" || msg.type === "reopen") {
@@ -105,7 +90,6 @@ export class Room {
         const i = deck.questions.findIndex((q) => q.id === msg.id);
         if (i === -1) return;
         deck.questions.splice(i, 1);
-        if (deck.activeId === msg.id) deck.activeId = null;
         return this.save(deck);
       }
       if (msg.type === "remove_answer") {

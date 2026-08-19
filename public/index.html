@@ -17,27 +17,10 @@
 
   <section id="waiting" class="card center">
     <h2>You&rsquo;re in!</h2>
-    <p class="meta">The session will begin shortly &mdash; keep this page open.</p>
+    <p class="meta">The questions will appear here shortly.</p>
   </section>
 
-  <section id="question" class="card" hidden>
-    <h2 id="prompt"></h2>
-
-    <div id="choice-ui" hidden>
-      <div id="choices" class="choices"></div>
-    </div>
-
-    <div id="text-ui" hidden>
-      <form id="answer-form">
-        <input id="answer" placeholder="Type your answer&hellip;" maxlength="240" autocomplete="off">
-        <button type="submit">Share</button>
-      </form>
-      <p class="meta" id="quota" style="margin:.6rem 0 1rem"></p>
-    </div>
-
-    <div id="results"></div>
-    <p class="meta" id="status" style="margin-bottom:0"></p>
-  </section>
+  <div id="questions"></div>
 
   <p class="hint">Answers are anonymous.</p>
 </main>
@@ -48,6 +31,7 @@ let state = null;
 const myVotes = {};
 const mySubmits = {};
 const seenTiles = {};
+const qEls = new Map(); // question id -> its DOM pieces (inputs survive re-renders)
 
 function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -120,74 +104,106 @@ function buildBars(q) {
   return wrap;
 }
 
-function render() {
-  const q = state.active;
-  const waiting = document.getElementById("waiting");
-  const section = document.getElementById("question");
-  if (!q) { section.hidden = true; waiting.hidden = false; return; }
-  waiting.hidden = true;
-  section.hidden = false;
-  document.getElementById("prompt").textContent = q.prompt;
-
-  const choiceUi = document.getElementById("choice-ui");
-  const textUi = document.getElementById("text-ui");
-  const results = document.getElementById("results");
-  const status = document.getElementById("status");
-  results.innerHTML = "";
-
-  if (q.type === "choice") {
-    textUi.hidden = true;
-    choiceUi.hidden = false;
-    const choices = document.getElementById("choices");
-    choices.innerHTML = "";
-    q.options.forEach((opt, i) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = opt;
-      btn.disabled = !q.open;
-      if (myVotes[q.id] === i) btn.classList.add("selected");
-      btn.addEventListener("click", () => {
-        myVotes[q.id] = i;
-        send({ type: "vote", qid: q.id, option: i });
-        render();
-      });
-      choices.appendChild(btn);
+function ensureCard(q) {
+  if (qEls.has(q.id)) return qEls.get(q.id);
+  const card = document.createElement("section");
+  card.className = "card";
+  const h = document.createElement("h2");
+  card.appendChild(h);
+  const els = { card, h };
+  if (q.type === "text") {
+    const form = document.createElement("form");
+    form.className = "answer-form";
+    const input = document.createElement("input");
+    input.placeholder = "Type your answer…";
+    input.maxLength = 240;
+    input.autocomplete = "off";
+    const btn = document.createElement("button");
+    btn.type = "submit";
+    btn.textContent = "Share";
+    form.append(input, btn);
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      send({ type: "submit_text", qid: q.id, text });
+      mySubmits[q.id] = (mySubmits[q.id] ?? 0) + 1;
+      input.value = "";
+      render();
     });
-    results.appendChild(buildBars(q));
-    status.textContent = q.open ? "" : "Voting is closed.";
+    const quota = document.createElement("p");
+    quota.className = "meta";
+    quota.style.margin = ".6rem 0 0";
+    const results = document.createElement("div");
+    const status = document.createElement("p");
+    status.className = "meta";
+    status.style.marginBottom = "0";
+    card.append(form, quota, results, status);
+    Object.assign(els, { input, btn, quota, results, status });
   } else {
-    choiceUi.hidden = true;
-    textUi.hidden = false;
-    const used = mySubmits[q.id] ?? 0;
-    const input = document.getElementById("answer");
-    const btn = document.querySelector("#answer-form button");
-    const canSubmit = q.open && used < MAX_PER_PERSON;
-    input.disabled = !canSubmit;
-    btn.disabled = !canSubmit;
-    document.getElementById("quota").textContent =
-      !q.open ? "Responses are closed."
-      : used >= MAX_PER_PERSON ? "You’ve shared " + MAX_PER_PERSON + " answers — thank you!"
-      : used > 0 ? "Shared " + used + " of " + MAX_PER_PERSON + " — you can add another."
-      : "";
-    if (!seenTiles[q.id]) seenTiles[q.id] = new Set();
-    results.appendChild(buildCloud(q.answers, seenTiles[q.id]));
-    const n = q.answers.length;
-    status.textContent = n ? n + (n === 1 ? " answer so far" : " answers so far") : "Be the first to answer!";
+    const choices = document.createElement("div");
+    choices.className = "choices";
+    const results = document.createElement("div");
+    const status = document.createElement("p");
+    status.className = "meta";
+    status.style.marginBottom = "0";
+    card.append(choices, results, status);
+    Object.assign(els, { choices, results, status });
   }
+  qEls.set(q.id, els);
+  return els;
 }
 
-document.getElementById("answer-form").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const q = state && state.active;
-  if (!q || q.type !== "text") return;
-  const input = document.getElementById("answer");
-  const text = input.value.trim();
-  if (!text) return;
-  send({ type: "submit_text", qid: q.id, text });
-  mySubmits[q.id] = (mySubmits[q.id] ?? 0) + 1;
-  input.value = "";
-  render();
-});
+function render() {
+  const qs = state.questions;
+  document.getElementById("waiting").hidden = qs.length > 0;
+  const container = document.getElementById("questions");
+
+  for (const [id, els] of qEls) {
+    if (!qs.find((q) => q.id === id)) { els.card.remove(); qEls.delete(id); }
+  }
+
+  qs.forEach((q) => {
+    const els = ensureCard(q);
+    if (!els.card.isConnected) container.appendChild(els.card);
+    els.h.textContent = q.prompt;
+
+    if (q.type === "text") {
+      const used = mySubmits[q.id] ?? 0;
+      const canSubmit = q.open && used < MAX_PER_PERSON;
+      els.input.disabled = !canSubmit;
+      els.btn.disabled = !canSubmit;
+      els.quota.textContent =
+        !q.open ? "Responses are closed."
+        : used >= MAX_PER_PERSON ? "You’ve shared " + MAX_PER_PERSON + " answers — thank you!"
+        : used > 0 ? "Shared " + used + " of " + MAX_PER_PERSON + " — you can add another."
+        : "";
+      if (!seenTiles[q.id]) seenTiles[q.id] = new Set();
+      els.results.innerHTML = "";
+      els.results.appendChild(buildCloud(q.answers, seenTiles[q.id]));
+      const n = q.answers.length;
+      els.status.textContent = n ? n + (n === 1 ? " answer so far" : " answers so far") : "Be the first to answer!";
+    } else {
+      els.choices.innerHTML = "";
+      q.options.forEach((opt, i) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = opt;
+        btn.disabled = !q.open;
+        if (myVotes[q.id] === i) btn.classList.add("selected");
+        btn.addEventListener("click", () => {
+          myVotes[q.id] = i;
+          send({ type: "vote", qid: q.id, option: i });
+          render();
+        });
+        els.choices.appendChild(btn);
+      });
+      els.results.innerHTML = "";
+      els.results.appendChild(buildBars(q));
+      els.status.textContent = q.open ? "" : "Voting is closed.";
+    }
+  });
+}
 
 connect();
 </script>

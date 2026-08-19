@@ -201,3 +201,23 @@ main.stage.fullpage {
 .fullpage #stage-prompt { font-size: clamp(2rem, 5vw, 4.2rem); margin: 0; }
 .fullpage #stage-body { font-size: clamp(1.15rem, 2vw, 1.8rem); }
 .fullpage .stage-join { font-size: 1rem; }
+
+/* all-questions-at-once layouts */
+.answer-form { display: flex; gap: .5rem; }
+.answer-form input { flex: 1; margin-bottom: 0; }
+.screen-qs {
+  flex: 1; display: flex; flex-direction: column;
+  justify-content: space-evenly; gap: clamp(1rem, 3vh, 2.5rem);
+}
+.screen-q h2 { font-size: clamp(1.3rem, 2.6vw, 2.3rem); margin: 0 0 .7rem; }
+.screen-q .cloud { justify-content: center; }
+.screen-empty { color: var(--stage-muted); text-align: center; margin: .3rem 0; }
+.screen-idle {
+  margin: auto; color: var(--stage-muted);
+  font-size: clamp(1.5rem, 3vw, 2.5rem);
+}
+.admin-q { padding: 1rem 0; border-bottom: 1px solid var(--line); margin-bottom: .5rem; }
+.admin-q-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 1rem; margin-bottom: .5rem;
+}
