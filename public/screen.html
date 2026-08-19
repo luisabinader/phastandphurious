@@ -12,7 +12,6 @@
 <main id="stage" class="stage fullpage">
   <div class="stage-join">
     <span class="brand">PHAST<span class="amp">&amp;</span>PHURIOUS</span>
-    <span>join at <b class="join-host"></b></span>
   </div>
   <div id="qs" class="screen-qs"></div>
   <footer class="stage-foot">
@@ -21,8 +20,6 @@
   </footer>
 </main>
 <script>
-document.querySelectorAll(".join-host").forEach(el => el.textContent = location.host);
-
 let ws;
 let state = null;
 const seenTiles = {};
