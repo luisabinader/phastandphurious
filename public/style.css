@@ -1,16 +1,21 @@
 :root {
-  --bg: #FAF7F2;
+  /* George Washington University palette: GW Blue #033C5A + GW Buff #D6BF91 */
+  --bg: #F5F1E8;
   --card: #FFFFFF;
-  --ink: #2A2440;
-  --ink-2: #6E6884;
-  --line: #E7E0D2;
-  --accent: #C65D3B;
-  --accent-soft: #F7E7DE;
-  --stage-bg: #241F33;
-  --stage-bg-2: #352D4A;
-  --stage-ink: #F5EFE6;
-  --stage-muted: #A79FBB;
-  --stage-fill: #D66A47;
+  --ink: #17303F;
+  --ink-2: #5D7284;
+  --line: #E3DCC9;
+  --accent: #033C5A;
+  --accent-soft: #F0E8D3;
+  --buff: #D6BF91;
+  --buff-ink: #8F7439;
+  --bar-light: #1B6FA0;
+  --danger: #B3261E;
+  --stage-bg: #033C5A;
+  --stage-bg-2: #12557B;
+  --stage-ink: #F7F1E1;
+  --stage-muted: #9CB9CB;
+  --stage-fill: #D6BF91;
   --radius: 14px;
 }
 * { box-sizing: border-box; }
@@ -31,7 +36,8 @@ h1, h2 { margin: 0 0 .75rem; line-height: 1.2; }
 
 /* wordmark */
 .brand { font-weight: 800; font-style: italic; letter-spacing: -0.02em; white-space: nowrap; }
-.brand .amp { color: var(--accent); font-style: normal; padding: 0 .06em; }
+.brand .amp { color: var(--buff-ink); font-style: normal; padding: 0 .06em; }
+.stage .brand .amp { color: var(--buff); }
 
 /* top bar (presenter) */
 .topbar {
@@ -86,7 +92,7 @@ button:disabled { opacity: .45; cursor: default; filter: none; }
 button.ghost { background: transparent; border: 1.5px solid var(--line); color: var(--ink); font-weight: 500; }
 button.small { padding: .35rem .8rem; font-size: .85rem; border-radius: 8px; }
 button.block { width: 100%; }
-button.armed, button.ghost.armed { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.armed, button.ghost.armed { background: var(--danger); color: #fff; border-color: var(--danger); }
 
 .or {
   display: flex; align-items: center; gap: .8rem; color: var(--ink-2);
@@ -116,7 +122,7 @@ button.armed, button.ghost.armed { background: var(--accent); color: #fff; borde
   color: var(--stage-muted); font-size: .9rem; gap: 1rem;
 }
 .stage-actions { display: flex; gap: .5rem; }
-.stage button.ghost { border-color: var(--stage-bg-2); color: var(--stage-ink); }
+.stage button.ghost { border-color: #2A6488; color: var(--stage-ink); }
 .big-code {
   font-size: clamp(3rem, 11vw, 6.5rem); font-weight: 800; letter-spacing: .18em;
   margin: auto; padding-left: .18em;
@@ -137,7 +143,7 @@ button.armed, button.ghost.armed { background: var(--accent); color: #fff; borde
 button.tile:hover { outline: 1.5px solid var(--stage-muted); }
 .tile small { opacity: .65; margin-left: .45em; font-size: .65em; font-weight: 700; }
 .tile.pop { animation: pop .3s ease; }
-.tile.armed, button.tile.armed:hover { background: var(--accent); color: #fff; }
+.tile.armed, button.tile.armed:hover { background: var(--danger); color: #fff; }
 @keyframes pop { from { transform: scale(.7); opacity: 0; } }
 .card .tile { background: var(--accent-soft); color: var(--ink); }
 
@@ -148,9 +154,9 @@ button.tile:hover { outline: 1.5px solid var(--stage-muted); }
 .bar-count { font-variant-numeric: tabular-nums; color: var(--stage-muted); flex-shrink: 0; }
 .card .bar-count { color: var(--ink-2); }
 .track { height: 14px; border-radius: 7px; background: var(--stage-bg-2); overflow: hidden; }
-.card .track { background: #EFE9DE; }
+.card .track { background: #EDE6D2; }
 .fill { height: 100%; background: var(--stage-fill); border-radius: 0 4px 4px 0; transition: width .4s ease; }
-.card .fill { background: var(--accent); }
+.card .fill { background: var(--bar-light); }
 
 /* ---- question deck (presenter) ---- */
 .deck { list-style: none; margin: 0 0 1.25rem; padding: 0; }
@@ -183,7 +189,7 @@ button.tile:hover { outline: 1.5px solid var(--stage-muted); }
 .dot { display: inline-block; width: .55em; height: .55em; border-radius: 50%; background: #B9B2A4; margin-right: .35em; }
 .dot.live { background: #3E9B6E; }
 .hint { color: var(--ink-2); font-size: .88rem; text-align: center; }
-.error { color: #B3261E; }
+.error { color: var(--danger); }
 
 @media (max-width: 560px) {
   body { padding: .75rem; }
